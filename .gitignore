@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+
+# PyInstaller build output
+build/
+dist/
+*.spec.bak
+
+# Installer output
+RAWSync_Installer_*.exe
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
