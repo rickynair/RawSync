@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -34,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='icon.ico',
+    icon=['C:\\Users\\User\\OneDrive\\Documents\\VSCode Projects\\File Copier\\icon.ico'],
 )
