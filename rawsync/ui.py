@@ -1,7 +1,14 @@
 """UI layer: splash screen, main window, settings sheet, and small
 reusable widgets. Visual language is intentionally restrained and
 macOS-inspired: soft neutral surfaces, one accent color, pill buttons,
-and generous whitespace instead of icon clutter."""
+and generous whitespace instead of icon clutter.
+
+Every widget is colored with theme.dual(...) -- a (light, dark) tuple --
+rather than a single resolved color. CustomTkinter tracks these tuples
+internally and restyles every widget automatically when the appearance
+mode changes, so switching themes never requires manually destroying and
+rebuilding the window (that approach previously caused the app to freeze
+when changing themes from Settings)."""
 
 from __future__ import annotations
 
@@ -29,14 +36,6 @@ def _set_window_icon(win: ctk.CTk | ctk.CTkToplevel) -> None:
             pass
 
 
-def _truncate_middle(path: str, max_chars: int = 46) -> str:
-    if len(path) <= max_chars:
-        return path
-    head_len = max_chars // 2 - 2
-    tail_len = max_chars - head_len - 3
-    return f"{path[:head_len]}...{path[-tail_len:]}"
-
-
 # --------------------------------------------------------------------------
 # Small reusable widgets
 # --------------------------------------------------------------------------
@@ -44,7 +43,6 @@ class PillButton(ctk.CTkButton):
     """A rounded, accent-colored (or ghost) button matching the app's style."""
 
     def __init__(self, master, text, command=None, kind="primary", **kwargs):
-        p = theme.palette()
         base = dict(
             corner_radius=theme.RADIUS_PILL,
             font=theme.font(13, "bold"),
@@ -53,23 +51,23 @@ class PillButton(ctk.CTkButton):
         )
         if kind == "primary":
             base.update(
-                fg_color=p["accent"],
-                hover_color=p["accent_hover"],
-                text_color=p["accent_text"],
+                fg_color=theme.dual("accent"),
+                hover_color=theme.dual("accent_hover"),
+                text_color=theme.dual("accent_text"),
             )
         elif kind == "secondary":
             base.update(
-                fg_color=p["field"],
-                hover_color=p["card_border"],
-                text_color=p["text_primary"],
+                fg_color=theme.dual("field"),
+                hover_color=theme.dual("card_border"),
+                text_color=theme.dual("text_primary"),
                 border_width=1,
-                border_color=p["field_border"],
+                border_color=theme.dual("field_border"),
             )
         else:  # ghost
             base.update(
                 fg_color="transparent",
-                hover_color=p["field"],
-                text_color=p["text_secondary"],
+                hover_color=theme.dual("field"),
+                text_color=theme.dual("text_secondary"),
                 font=theme.font(12, "normal"),
                 height=30,
             )
@@ -81,15 +79,14 @@ class StepBadge(ctk.CTkFrame):
     """Small numbered circle used to give the three folder fields a clear order."""
 
     def __init__(self, master, number: int, **kwargs):
-        p = theme.palette()
         super().__init__(
             master, width=26, height=26, corner_radius=13,
-            fg_color=p["field"], border_width=1, border_color=p["field_border"],
+            fg_color=theme.dual("field"), border_width=1, border_color=theme.dual("field_border"),
             **kwargs,
         )
         self.grid_propagate(False)
         ctk.CTkLabel(
-            self, text=str(number), font=theme.font(12, "bold"), text_color=p["text_secondary"],
+            self, text=str(number), font=theme.font(12, "bold"), text_color=theme.dual("text_secondary"),
         ).place(relx=0.5, rely=0.5, anchor="center")
 
 
@@ -97,7 +94,6 @@ class FolderField(ctk.CTkFrame):
     """One row: step badge, title + hint, path entry, browse pill."""
 
     def __init__(self, master, number: int, title: str, hint: str, on_change=None, **kwargs):
-        p = theme.palette()
         super().__init__(master, fg_color="transparent", **kwargs)
         self.path_var = ctk.StringVar()
         self._on_change = on_change
@@ -107,11 +103,11 @@ class FolderField(ctk.CTkFrame):
         StepBadge(self, number).grid(row=0, column=0, rowspan=2, padx=(0, 12), sticky="n")
 
         ctk.CTkLabel(
-            self, text=title, font=theme.font(14, "bold"), text_color=p["text_primary"], anchor="w",
+            self, text=title, font=theme.font(14, "bold"), text_color=theme.dual("text_primary"), anchor="w",
         ).grid(row=0, column=1, sticky="w")
 
         ctk.CTkLabel(
-            self, text=hint, font=theme.font(11), text_color=p["text_tertiary"], anchor="w",
+            self, text=hint, font=theme.font(11), text_color=theme.dual("text_tertiary"), anchor="w",
         ).grid(row=1, column=1, sticky="w", pady=(0, 6))
 
         row = ctk.CTkFrame(self, fg_color="transparent")
@@ -124,11 +120,11 @@ class FolderField(ctk.CTkFrame):
             placeholder_text="No folder selected",
             height=36,
             corner_radius=theme.RADIUS_FIELD,
-            fg_color=p["field"],
-            border_color=p["field_border"],
+            fg_color=theme.dual("field"),
+            border_color=theme.dual("field_border"),
             border_width=1,
             font=theme.font(12),
-            text_color=p["text_primary"],
+            text_color=theme.dual("text_primary"),
         )
         self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
@@ -156,9 +152,8 @@ class Toast(ctk.CTkToplevel):
 
     def __init__(self, master, message: str, kind: str = "success", duration_ms: int = 3200):
         super().__init__(master)
-        p = theme.palette()
-        bg = p["success_bg"] if kind == "success" else p["danger_bg"]
-        fg = p["success"] if kind == "success" else p["danger"]
+        bg = theme.dual("success_bg") if kind == "success" else theme.dual("danger_bg")
+        fg = theme.dual("success") if kind == "success" else theme.dual("danger")
 
         self.overrideredirect(True)
         self.attributes("-topmost", True)
@@ -208,46 +203,45 @@ class Toast(ctk.CTkToplevel):
 
 class SettingsSheet(ctk.CTkToplevel):
     """Modal settings window. Currently: appearance mode only, matching the
-    original app's feature set."""
+    original app's feature set.
 
-    def __init__(self, master, on_appearance_change=None):
+    Changing appearance here only ever calls ctk.set_appearance_mode() --
+    it does NOT rebuild any window. CustomTkinter propagates the change to
+    every open widget (this sheet included) on its own via the dual-color
+    tuples used throughout ui.py."""
+
+    def __init__(self, master):
         super().__init__(master)
-        p = theme.palette()
         self.title("Settings")
         self.geometry("360x260")
         self.resizable(False, False)
-        self.configure(fg_color=p["bg"])
+        self.configure(fg_color=theme.dual("bg"))
         _set_window_icon(self)
         self.transient(master)
         self.grab_set()
 
         ctk.CTkLabel(
-            self, text="Settings", font=theme.font(20, "bold"), text_color=p["text_primary"],
+            self, text="Settings", font=theme.font(20, "bold"), text_color=theme.dual("text_primary"),
         ).pack(pady=(26, 4))
         ctk.CTkLabel(
-            self, text="Appearance", font=theme.font(12), text_color=p["text_secondary"],
+            self, text="Appearance", font=theme.font(12), text_color=theme.dual("text_secondary"),
         ).pack(pady=(12, 8))
 
         seg = ctk.CTkSegmentedButton(
             self,
             values=["Light", "Dark", "System"],
-            command=lambda choice: self._change_appearance(choice, on_appearance_change),
-            selected_color=p["accent"],
-            selected_hover_color=p["accent_hover"],
-            fg_color=p["field"],
-            unselected_color=p["field"],
-            text_color=p["text_primary"],
+            command=lambda choice: ctk.set_appearance_mode(choice),
+            selected_color=theme.dual("accent"),
+            selected_hover_color=theme.dual("accent_hover"),
+            fg_color=theme.dual("field"),
+            unselected_color=theme.dual("field"),
+            text_color=theme.dual("text_primary"),
             font=theme.font(12, "bold"),
         )
         seg.set(ctk.get_appearance_mode())
         seg.pack(padx=28, fill="x")
 
         PillButton(self, "Done", command=self.destroy, kind="primary").pack(pady=28)
-
-    def _change_appearance(self, choice, callback):
-        ctk.set_appearance_mode(choice)
-        if callback:
-            callback()
 
 
 # --------------------------------------------------------------------------
@@ -256,9 +250,8 @@ class SettingsSheet(ctk.CTkToplevel):
 class SplashScreen(ctk.CTk):
     def __init__(self):
         super().__init__()
-        p = theme.palette()
         self.overrideredirect(True)
-        self.configure(fg_color=p["bg"])
+        self.configure(fg_color=theme.dual("bg"))
         w, h = 420, 260
         self.geometry(f"{w}x{h}")
         self.eval("tk::PlaceWindow . center")
@@ -267,19 +260,19 @@ class SplashScreen(ctk.CTk):
         except Exception:
             pass
 
-        card = ctk.CTkFrame(self, fg_color=p["bg"])
+        card = ctk.CTkFrame(self, fg_color=theme.dual("bg"))
         card.pack(fill="both", expand=True)
 
         ctk.CTkLabel(
-            card, text=APP_NAME, font=theme.font(32, "bold"), text_color=p["text_primary"],
+            card, text=APP_NAME, font=theme.font(32, "bold"), text_color=theme.dual("text_primary"),
         ).pack(pady=(70, 4))
         ctk.CTkLabel(
-            card, text=f"by {STUDIO_NAME}", font=theme.font(13), text_color=p["text_secondary"],
+            card, text=f"by {STUDIO_NAME}", font=theme.font(13), text_color=theme.dual("text_secondary"),
         ).pack()
 
         self.bar = ctk.CTkProgressBar(
             card, width=200, height=4, corner_radius=2,
-            fg_color=p["track"], progress_color=p["accent"], mode="indeterminate",
+            fg_color=theme.dual("track"), progress_color=theme.dual("accent"), mode="indeterminate",
         )
         self.bar.pack(pady=36)
         self.bar.start()
@@ -308,12 +301,11 @@ class SplashScreen(ctk.CTk):
 class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        p = theme.palette()
 
         self.title(APP_NAME)
         self.geometry("760x640")
         self.resizable(False, False)
-        self.configure(fg_color=p["bg"])
+        self.configure(fg_color=theme.dual("bg"))
         _set_window_icon(self)
 
         self._build_header()
@@ -321,19 +313,17 @@ class MainApp(ctk.CTk):
 
     # -- layout -----------------------------------------------------------
     def _build_header(self):
-        p = theme.palette()
         header = ctk.CTkFrame(self, fg_color="transparent")
-        self._header_frame = header
         header.pack(fill="x", padx=32, pady=(28, 12))
         header.grid_columnconfigure(0, weight=1)
 
         title_box = ctk.CTkFrame(header, fg_color="transparent")
         title_box.grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(
-            title_box, text=APP_NAME, font=theme.font(26, "bold"), text_color=p["text_primary"],
+            title_box, text=APP_NAME, font=theme.font(26, "bold"), text_color=theme.dual("text_primary"),
         ).pack(anchor="w")
         ctk.CTkLabel(
-            title_box, text=APP_TAGLINE, font=theme.font(12), text_color=p["text_secondary"],
+            title_box, text=APP_TAGLINE, font=theme.font(12), text_color=theme.dual("text_secondary"),
         ).pack(anchor="w", pady=(2, 0))
 
         PillButton(
@@ -341,10 +331,9 @@ class MainApp(ctk.CTk):
         ).grid(row=0, column=1, sticky="e")
 
     def _build_card(self):
-        p = theme.palette()
         self.card = ctk.CTkFrame(
-            self, fg_color=p["card"], corner_radius=theme.RADIUS_CARD,
-            border_width=1, border_color=p["card_border"],
+            self, fg_color=theme.dual("card"), corner_radius=theme.RADIUS_CARD,
+            border_width=1, border_color=theme.dual("card_border"),
         )
         self.card.pack(fill="both", expand=True, padx=32, pady=(0, 28))
 
@@ -366,7 +355,7 @@ class MainApp(ctk.CTk):
         )
         self.dest_field.pack(fill="x", pady=(0, 8))
 
-        divider = ctk.CTkFrame(inner, fg_color=p["divider"], height=1)
+        divider = ctk.CTkFrame(inner, fg_color=theme.dual("divider"), height=1)
         divider.pack(fill="x", pady=(14, 20))
 
         # Progress
@@ -375,16 +364,16 @@ class MainApp(ctk.CTk):
         progress_row.grid_columnconfigure(0, weight=1)
 
         self.status_label = ctk.CTkLabel(
-            progress_row, text="Ready", font=theme.font(12, "bold"), text_color=p["text_secondary"], anchor="w",
+            progress_row, text="Ready", font=theme.font(12, "bold"), text_color=theme.dual("text_secondary"), anchor="w",
         )
         self.status_label.grid(row=0, column=0, sticky="w")
         self.percent_label = ctk.CTkLabel(
-            progress_row, text="", font=theme.font(12), text_color=p["text_tertiary"], anchor="e",
+            progress_row, text="", font=theme.font(12), text_color=theme.dual("text_tertiary"), anchor="e",
         )
         self.percent_label.grid(row=0, column=1, sticky="e")
 
         self.progress_bar = ctk.CTkProgressBar(
-            inner, height=8, corner_radius=4, fg_color=p["track"], progress_color=p["accent"],
+            inner, height=8, corner_radius=4, fg_color=theme.dual("track"), progress_color=theme.dual("accent"),
         )
         self.progress_bar.set(0)
         self.progress_bar.pack(fill="x", pady=(8, 24))
@@ -417,21 +406,7 @@ class MainApp(ctk.CTk):
         self.run_button.configure(state="disabled")
 
     def open_settings(self):
-        SettingsSheet(self, on_appearance_change=self._refresh_theme)
-
-    def _refresh_theme(self):
-        # Rebuild just our own header/card content in place so the new
-        # palette applies everywhere. Deliberately does NOT touch
-        # self.winfo_children() wholesale, since that would also tear down
-        # any open Toplevel (e.g. the Settings sheet calling this) while
-        # it's still on screen.
-        p = theme.palette()
-        self.configure(fg_color=p["bg"])
-        self._header_frame.destroy()
-        self.card.destroy()
-        self._build_header()
-        self._build_card()
-        self._validate()
+        SettingsSheet(self)
 
     def run_task(self):
         jpeg = self.jpeg_field.get()

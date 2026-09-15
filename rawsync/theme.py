@@ -54,6 +54,16 @@ def palette() -> dict:
     return DARK if ctk.get_appearance_mode() == "Dark" else LIGHT
 
 
+def dual(key: str):
+    """(light, dark) tuple for a token, for CTk's built-in appearance-mode-
+    aware color parameters (fg_color, text_color, border_color, ...).
+
+    Every widget in this app is colored with these tuples rather than a
+    resolved single color, so CustomTkinter can restyle everything live
+    when the appearance mode changes -- no manual rebuild required."""
+    return (LIGHT[key], DARK[key])
+
+
 def font(size: int, weight: str = "normal") -> ctk.CTkFont:
     return ctk.CTkFont(family=FONT_FAMILY, size=size, weight=weight)
 
